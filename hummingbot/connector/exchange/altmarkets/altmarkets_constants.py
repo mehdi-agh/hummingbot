@@ -4,9 +4,9 @@ from hummingbot.core.api_throttler.data_types import RateLimit, LinkedLimitWeigh
 # A single source of truth for constant variables related to the exchange
 class Constants:
     EXCHANGE_NAME = "altmarkets"
-    REST_URL = "https://v2.altmarkets.io/api/v2/peatio"
-    WS_PRIVATE_URL = "wss://v2.altmarkets.io/api/v2/ranger/private"
-    WS_PUBLIC_URL = "wss://v2.altmarkets.io/api/v2/ranger/public"
+    REST_URL = "https://xe.msamex.com/api/v2/peatio"
+    WS_PRIVATE_URL = "wss://xe.msamex.com/api/v2/ranger/private"
+    WS_PUBLIC_URL = "wss://xe.msamex.com/api/v2/ranger/public"
 
     HBOT_BROKER_ID = "HBOT"
 
@@ -72,7 +72,7 @@ class Constants:
     INTERVAL_TRADING_RULES = 600
 
     # Trading pair splitter regex
-    TRADING_PAIR_SPLITTER = r"^(\w+)(btc|ltc|altm|doge|eth|bnb|usdt|usdc|usds|tusd|cro|roger)$"
+    TRADING_PAIR_SPLITTER = r"^(\w+)(btc|ltc|altm|doge|eth|bnb|usdt|usdc|usds|tusd|busd|cro|roger)$"
 
     RL_TIME_INTERVAL = 12
     RL_ID_HTTP_ENDPOINTS = "AllHTTP"
