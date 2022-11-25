@@ -10,6 +10,8 @@ from bidict import bidict
 
 import hummingbot.connector.exchange.okx.okx_constants as CONSTANTS
 import hummingbot.connector.exchange.okx.okx_web_utils as web_utils
+from hummingbot.client.config.client_config_map import ClientConfigMap
+from hummingbot.client.config.config_helpers import ClientConfigAdapter
 from hummingbot.connector.exchange.okx.okx_api_order_book_data_source import OkxAPIOrderBookDataSource
 from hummingbot.connector.exchange.okx.okx_exchange import OkxExchange
 from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
@@ -36,18 +38,23 @@ class OkxAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         self.listening_task = None
         self.mocking_assistant = NetworkMockingAssistant()
 
+        client_config_map = ClientConfigAdapter(ClientConfigMap())
         self.connector = OkxExchange(
+            client_config_map=client_config_map,
             okx_api_key="",
             okx_secret_key="",
             okx_passphrase="",
             trading_pairs=[self.trading_pair],
             trading_required=False,
-
         )
         self.data_source = OkxAPIOrderBookDataSource(
             trading_pairs=[self.trading_pair],
             connector=self.connector,
             api_factory=self.connector._web_assistants_factory)
+
+        self._original_full_order_book_reset_time = self.data_source.FULL_ORDER_BOOK_RESET_DELTA_SECONDS
+        self.data_source.FULL_ORDER_BOOK_RESET_DELTA_SECONDS = -1
+
         self.data_source.logger().setLevel(1)
         self.data_source.logger().addHandler(self)
 
@@ -58,7 +65,7 @@ class OkxAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.listening_task and self.listening_task.cancel()
-        OkxAPIOrderBookDataSource._trading_pair_symbol_map = {}
+        self.data_source.FULL_ORDER_BOOK_RESET_DELTA_SECONDS = self._original_full_order_book_reset_time
         super().tearDown()
 
     def handle(self, record):

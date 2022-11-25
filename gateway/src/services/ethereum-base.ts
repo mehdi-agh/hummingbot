@@ -48,7 +48,7 @@ export class EthereumBase {
   public chainId;
   public rpcUrl;
   public gasPriceConstant;
-  private _gasLimit;
+  private _gasLimitTransaction;
   public tokenListSource: string;
   public tokenListType: TokenListType;
   public cache: NodeCache;
@@ -63,7 +63,7 @@ export class EthereumBase {
     tokenListSource: string,
     tokenListType: TokenListType,
     gasPriceConstant: number,
-    gasLimit: number,
+    gasLimitTransaction: number,
     nonceDbPath: string,
     transactionDbPath: string
   ) {
@@ -74,6 +74,7 @@ export class EthereumBase {
     this.gasPriceConstant = gasPriceConstant;
     this.tokenListSource = tokenListSource;
     this.tokenListType = tokenListType;
+
     this._refCountingHandle = ReferenceCountingCloseable.createHandle();
     this._nonceManager = new EVMNonceManager(
       chainName,
@@ -82,7 +83,7 @@ export class EthereumBase {
     );
     this._nonceManager.declareOwnership(this._refCountingHandle);
     this.cache = new NodeCache({ stdTTL: 3600 }); // set default cache ttl to 1hr
-    this._gasLimit = gasLimit;
+    this._gasLimitTransaction = gasLimitTransaction;
     this._txStorage = EvmTxStorage.getInstance(
       this.resolveDBPath(transactionDbPath),
       this._refCountingHandle
@@ -98,8 +99,8 @@ export class EthereumBase {
     return this._provider;
   }
 
-  public get gasLimit() {
-    return this._gasLimit;
+  public get gasLimitTransaction() {
+    return this._gasLimitTransaction;
   }
 
   public resolveDBPath(oldPath: string): string {
@@ -127,7 +128,6 @@ export class EthereumBase {
     if (!this.ready() && !this._initializing) {
       this._initializing = true;
       await this._nonceManager.init(this.provider);
-
       await this.loadTokens(this.tokenListSource, this.tokenListType);
       this._ready = true;
       this._initializing = false;
@@ -140,12 +140,14 @@ export class EthereumBase {
     tokenListType: TokenListType
   ): Promise<void> {
     this.tokenList = await this.getTokenList(tokenListSource, tokenListType);
+    // Only keep tokens in the same chain
+    this.tokenList = this.tokenList.filter(
+      (token: TokenInfo) => token.chainId === this.chainId
+    );
     if (this.tokenList) {
-      this.tokenList.forEach((token: TokenInfo) => {
-        if (token.chainId === this.chainId) {
-          this._tokenMap[token.symbol] = token;
-        }
-      });
+      this.tokenList.forEach(
+        (token: TokenInfo) => (this._tokenMap[token.symbol] = token)
+      );
     }
   }
 
@@ -177,7 +179,7 @@ export class EthereumBase {
   // getTokenList, we can read the stored tokenList value from when the
   // object was initiated.
   public get storedTokenList(): TokenInfo[] {
-    return this.tokenList;
+    return Object.values(this._tokenMap);
   }
 
   // return the Token object for a symbol
@@ -331,7 +333,7 @@ export class EthereumBase {
       }
     }
     const params: any = {
-      gasLimit: this._gasLimit,
+      gasLimit: this._gasLimitTransaction,
       nonce: nonce,
     };
     if (maxFeePerGas || maxPriorityFeePerGas) {
@@ -376,6 +378,24 @@ export class EthereumBase {
     logger.info(response);
 
     return response;
+  }
+
+  /**
+   * Get the base gas fee and the current max priority fee from the EVM
+   * node, and add them together.
+   */
+  async getGasPrice(): Promise<number | null> {
+    if (!this.ready) {
+      await this.init();
+    }
+    const feeData: providers.FeeData = await this._provider.getFeeData();
+    if (feeData.gasPrice !== null && feeData.maxPriorityFeePerGas !== null) {
+      return (
+        feeData.gasPrice.add(feeData.maxPriorityFeePerGas).toNumber() * 1e-9
+      );
+    } else {
+      return null;
+    }
   }
 
   async close() {

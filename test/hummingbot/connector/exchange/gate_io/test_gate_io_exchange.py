@@ -9,7 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from aioresponses import aioresponses
 from bidict import bidict
 
-from hummingbot.connector.client_order_tracker import ClientOrderTracker
+from hummingbot.client.config.client_config_map import ClientConfigMap
+from hummingbot.client.config.config_helpers import ClientConfigAdapter
 from hummingbot.connector.exchange.gate_io import gate_io_constants as CONSTANTS
 from hummingbot.connector.exchange.gate_io.gate_io_exchange import GateIoExchange
 from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
@@ -51,8 +52,13 @@ class TestGateIoExchange(unittest.TestCase):
         self.log_records = []
         self.mocking_assistant = NetworkMockingAssistant()
         self.async_tasks: List[asyncio.Task] = []
+        self.client_config_map = ClientConfigAdapter(ClientConfigMap())
 
-        self.exchange = GateIoExchange(self.api_key, self.api_secret, trading_pairs=[self.trading_pair])
+        self.exchange = GateIoExchange(
+            client_config_map=self.client_config_map,
+            gate_io_api_key=self.api_key,
+            gate_io_secret_key=self.api_secret,
+            trading_pairs=[self.trading_pair])
 
         self.exchange.logger().setLevel(1)
         self.exchange.logger().addHandler(self)
@@ -714,7 +720,7 @@ class TestGateIoExchange(unittest.TestCase):
         )
 
         # After the fourth time not finding the exchange order id the order should be marked as failed
-        for i in range(ClientOrderTracker.ORDER_NOT_FOUND_COUNT_LIMIT + 1):
+        for i in range(self.exchange._order_tracker._lost_order_count_limit + 1):
             self.async_run_with_timeout(self.exchange._execute_cancel(
                 trading_pair=order.trading_pair,
                 order_id=order.client_order_id,
@@ -943,11 +949,11 @@ class TestGateIoExchange(unittest.TestCase):
 
         self.assertTrue(
             self._is_logged(
-                "WARNING",
-                f"Failed to fetch order status updates for order {order.client_order_id}. "
-                f"Response: Error executing request GET "
+                "NETWORK",
+                f"Error fetching status update for the order {order.client_order_id}: "
+                f"Error executing request GET "
                 f"{CONSTANTS.REST_URL}/{CONSTANTS.ORDER_STATUS_PATH_URL.format(order_id=order.exchange_order_id)}. "
-                f"HTTP status is 404. Error: "
+                f"HTTP status is 404. Error: ."
             )
         )
 
@@ -1054,7 +1060,7 @@ class TestGateIoExchange(unittest.TestCase):
 
         self.assertEqual(1, self.exchange._order_tracker._order_not_found_records[order.client_order_id])
 
-    @patch("hummingbot.connector.utils.get_tracking_nonce_low_res")
+    @patch("hummingbot.connector.utils.get_tracking_nonce")
     def test_client_order_id_on_order(self, mocked_nonce):
         mocked_nonce.return_value = 7
 
@@ -1404,38 +1410,6 @@ class TestGateIoExchange(unittest.TestCase):
             )
         )
 
-    def test_user_stream_balance_update(self):
-        self.exchange._set_current_timestamp(1640780000)
-
-        event_message = {
-            "time": 1605248616,
-            "channel": "spot.balances",
-            "event": "update",
-            "result": [
-                {
-                    "timestamp": "1605248616",
-                    "timestamp_ms": "1605248616123",
-                    "user": "1000001",
-                    "currency": self.base_asset,
-                    "change": "100",
-                    "total": "10500",
-                    "available": "10000"
-                }
-            ]
-        }
-
-        mock_queue = AsyncMock()
-        mock_queue.get.side_effect = [event_message, asyncio.CancelledError]
-        self.exchange._user_stream_tracker._user_stream = mock_queue
-
-        try:
-            self.async_run_with_timeout(self.exchange._user_stream_event_listener())
-        except asyncio.CancelledError:
-            pass
-
-        self.assertEqual(Decimal("10000"), self.exchange.available_balances[self.base_asset])
-        self.assertEqual(Decimal("10500"), self.exchange.get_balance(self.base_asset))
-
     def test_user_stream_raises_cancel_exception(self):
         self.exchange._set_current_timestamp(1640780000)
 
@@ -1454,7 +1428,7 @@ class TestGateIoExchange(unittest.TestCase):
 
         incomplete_event = {
             "time": 1605248616,
-            "channel": "spot.balances",
+            "channel": "spot.orders",
             "event": "update",
         }
 

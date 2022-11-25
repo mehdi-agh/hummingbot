@@ -7,6 +7,8 @@ from unittest.mock import patch
 from aioresponses import aioresponses
 from aioresponses.core import RequestCall
 
+from hummingbot.client.config.client_config_map import ClientConfigMap
+from hummingbot.client.config.config_helpers import ClientConfigAdapter
 from hummingbot.connector.exchange.okx import okx_constants as CONSTANTS, okx_web_utils as web_utils
 from hummingbot.connector.exchange.okx.okx_exchange import OkxExchange
 from hummingbot.connector.test_support.exchange_connector_test import AbstractExchangeConnectorTests
@@ -455,7 +457,9 @@ class OkxExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         return f"{base_token}-{quote_token}"
 
     def create_exchange_instance(self):
+        client_config_map = ClientConfigAdapter(ClientConfigMap())
         return OkxExchange(
+            client_config_map,
             self.api_key,
             self.api_secret_key,
             self.api_passphrase,
@@ -816,7 +820,7 @@ class OkxExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def trade_event_for_full_fill_websocket_update(self, order: InFlightOrder):
         return {}
 
-    @patch("hummingbot.connector.utils.get_tracking_nonce_low_res")
+    @patch("hummingbot.connector.utils.get_tracking_nonce")
     def test_client_order_id_on_order(self, mocked_nonce):
         mocked_nonce.return_value = 9
 
@@ -849,6 +853,15 @@ class OkxExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         )
 
         self.assertEqual(result, expected_client_order_id)
+
+    def test_time_synchronizer_related_request_error_detection(self):
+        exception = IOError("Error executing request POST https://okx.com/api/v3/order. HTTP status is 401. "
+                            'Error: {"code":"50113","msg":"message"}')
+        self.assertTrue(self.exchange._is_request_exception_related_to_time_synchronizer(exception))
+
+        exception = IOError("Error executing request POST https://okx.com/api/v3/order. HTTP status is 401. "
+                            'Error: {"code":"50114","msg":"message"}')
+        self.assertFalse(self.exchange._is_request_exception_related_to_time_synchronizer(exception))
 
     def _order_cancelation_request_successful_mock_response(self, order: InFlightOrder) -> Any:
         return {

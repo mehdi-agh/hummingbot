@@ -1,9 +1,11 @@
 import argparse
-from typing import Any, List
+from typing import TYPE_CHECKING, Any, List
 
 from hummingbot.client.command.connect_command import OPTIONS as CONNECT_OPTIONS
-from hummingbot.client.config.global_config_map import global_config_map
 from hummingbot.exceptions import ArgumentParserError
+
+if TYPE_CHECKING:
+    from hummingbot.client.hummingbot_application import HummingbotApplication
 
 
 class ThrowingArgumentParser(argparse.ArgumentParser):
@@ -35,7 +37,7 @@ class ThrowingArgumentParser(argparse.ArgumentParser):
         return filtered
 
 
-def load_parser(hummingbot, command_tabs) -> [ThrowingArgumentParser, Any]:
+def load_parser(hummingbot: "HummingbotApplication", command_tabs) -> [ThrowingArgumentParser, Any]:
     parser = ThrowingArgumentParser(prog="", add_help=False)
     subparsers = parser.add_subparsers()
 
@@ -148,21 +150,20 @@ def load_parser(hummingbot, command_tabs) -> [ThrowingArgumentParser, Any]:
     previous_strategy_parser.set_defaults(func=hummingbot.previous_strategy)
 
     # add shortcuts so they appear in command help
-    shortcuts = global_config_map.get("command_shortcuts").value
-    if shortcuts is not None:
-        for shortcut in shortcuts:
-            help_str = shortcut['help']
-            command = shortcut['command']
-            shortcut_parser = subparsers.add_parser(command, help=help_str)
-            args = shortcut['arguments']
-            for i in range(len(args)):
-                shortcut_parser.add_argument(f'${i+1}', help=args[i])
+    shortcuts = hummingbot.client_config_map.command_shortcuts
+    for shortcut in shortcuts:
+        help_str = shortcut.help
+        command = shortcut.command
+        shortcut_parser = subparsers.add_parser(command, help=help_str)
+        args = shortcut.arguments
+        for i in range(len(args)):
+            shortcut_parser.add_argument(f'${i+1}', help=args[i])
 
     rate_parser = subparsers.add_parser('rate', help="Show rate of a given trading pair")
     rate_parser.add_argument("-p", "--pair", default=None,
-                             dest="pair", help="The market trading pair you want to see rate.")
+                             dest="pair", help="The market trading pair for which you want to get a rate.")
     rate_parser.add_argument("-t", "--token", default=None,
-                             dest="token", help="The token you want to see its value.")
+                             dest="token", help="The token who's value you want to get.")
     rate_parser.set_defaults(func=hummingbot.rate)
 
     for name, command_tab in command_tabs.items():
